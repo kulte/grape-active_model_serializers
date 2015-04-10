@@ -4,12 +4,29 @@ module Grape
       class << self
         def call(resource, env)
           serializer = fetch_serializer(resource, env)
+          adapter = fetch_adapter(serializer, resource, env)
 
-          if serializer
-            serializer.to_json
+          if adapter
+            adapter.serializable_hash
           else
-            Grape::Formatter::Json.call resource, env
+            if serializer
+              serializer.object.to_json
+            else
+              Grape::Formatter::Json.call resource, env
+            end
           end
+        end
+
+        def fetch_adapter(serializer, resource, env)
+          return nil unless serializer
+
+          endpoint = env['api.endpoint']
+          options = build_adapter_options_from_endpoint(endpoint)
+
+          adapter = options.fetch(:adapter, ActiveModel::Serializer.config.adapter)
+          return nil unless adapter
+
+          adapter.new(serializer, options)
         end
 
         def fetch_serializer(resource, env)
@@ -37,6 +54,10 @@ module Grape
 
         def build_options_from_endpoint(endpoint)
           [endpoint.default_serializer_options || {}, endpoint.namespace_options, endpoint.route_options, endpoint.options, endpoint.options.fetch(:route_options)].reduce(:merge)
+        end
+
+        def build_adapter_options_from_endpoint(endpoint)
+          [endpoint.default_adapter_options || {}]
         end
 
         # array root is the innermost namespace name ('space') if there is one,
