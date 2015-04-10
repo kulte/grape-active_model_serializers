@@ -43,6 +43,9 @@ module Grape
     def default_serializer_options
     end
 
+    def default_adapter_options
+    end
+
     def url_options
     end
   end

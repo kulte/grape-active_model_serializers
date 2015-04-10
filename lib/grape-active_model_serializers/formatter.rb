@@ -57,7 +57,7 @@ module Grape
         end
 
         def build_adapter_options_from_endpoint(endpoint)
-          [endpoint.default_adapter_options || {}]
+          endpoint.default_adapter_options || {}
         end
 
         # array root is the innermost namespace name ('space') if there is one,
