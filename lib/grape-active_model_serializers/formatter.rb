@@ -7,7 +7,7 @@ module Grape
           adapter = fetch_adapter(serializer, resource, env)
 
           if adapter
-            adapter.serializable_hash
+            adapter.serializable_hash.to_json
           else
             if serializer
               serializer.object.to_json
