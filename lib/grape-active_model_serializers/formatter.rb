@@ -26,7 +26,7 @@ module Grape
           adapter = options.fetch(:adapter, ActiveModel::Serializer.config.adapter)
           return nil unless adapter
 
-          adapter.new(serializer, options)
+          ActiveModel::Serializer::Adapter.create(serializer, options)
         end
 
         def fetch_serializer(resource, env)
