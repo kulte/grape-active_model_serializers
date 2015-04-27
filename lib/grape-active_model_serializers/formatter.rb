@@ -36,6 +36,10 @@ module Grape
           serializer = options.fetch(:serializer, ActiveModel::Serializer.serializer_for(resource))
           return nil unless serializer
 
+          if options.key?(:each_serializer)
+            options[:serializer] = options.delete :each_serializer
+          end
+
           options[:scope] = endpoint unless options.key?(:scope)
           # ensure we have an root to fallback on
           options[:resource_name] = default_root(endpoint) if resource.respond_to?(:to_ary)
