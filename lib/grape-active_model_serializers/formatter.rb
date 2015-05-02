@@ -1,10 +1,16 @@
 module Grape
   module Formatter
     module ActiveModelSerializers
+
+      ADAPTER_OPTION_KEYS = [:include, :fields, :root, :adapter]
+
       class << self
         def call(resource, env)
-          serializer = fetch_serializer(resource, env)
-          adapter = fetch_adapter(serializer, resource, env)
+          adapter_options, serializer_options =
+              ams_options(env).partition { |k, _| ADAPTER_OPTION_KEYS.include? k }.map { |h| Hash[h] }
+          serializer = fetch_serializer(resource, env, serializer_options)
+          adapter = fetch_adapter(serializer, resource, env, adapter_options)
+
 
           if adapter
             adapter.serializable_hash.to_json
@@ -17,7 +23,7 @@ module Grape
           end
         end
 
-        def fetch_adapter(serializer, resource, env)
+        def fetch_adapter(serializer, resource, env, ams_options)
           return nil unless serializer
 
           endpoint = env['api.endpoint']
@@ -26,10 +32,10 @@ module Grape
           adapter = options.fetch(:adapter, ActiveModel::Serializer.config.adapter)
           return nil unless adapter
 
-          ActiveModel::Serializer::Adapter.create(serializer, options)
+          ActiveModel::Serializer::Adapter.create(serializer, options.merge(ams_options))
         end
 
-        def fetch_serializer(resource, env)
+        def fetch_serializer(resource, env, ams_options)
           endpoint = env['api.endpoint']
           options = build_options_from_endpoint(endpoint)
 
@@ -43,17 +49,11 @@ module Grape
           options[:scope] = endpoint unless options.key?(:scope)
           # ensure we have an root to fallback on
           options[:resource_name] = default_root(endpoint) if resource.respond_to?(:to_ary)
-          serializer.new(resource, options.merge(other_options(env)))
+          serializer.new(resource, options.merge(ams_options))
         end
 
-        def other_options(env)
-          options = {}
-          ams_meta = env['ams_meta'] || {}
-          meta =  ams_meta.delete(:meta)
-          meta_key = ams_meta.delete(:meta_key)
-          options[:meta_key] = meta_key if meta && meta_key
-          options[meta_key || :meta] = meta if meta
-          options
+        def ams_options(env)
+          env['ams_meta'] || {}
         end
 
         def build_options_from_endpoint(endpoint)
