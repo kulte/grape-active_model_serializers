@@ -19,7 +19,7 @@ describe Grape::Formatter::ActiveModelSerializers do
     end
 
     it 'should read serializer options like "root"' do
-      expect(described_class.build_options_from_endpoint(app.endpoints.first)).to include :root
+      expect(described_class.serializer_options_from_endpoint(app.endpoints.first)).to include :root
     end
   end
 
@@ -44,7 +44,7 @@ describe Grape::Formatter::ActiveModelSerializers do
       end
     end
 
-    subject { described_class.fetch_serializer(user, env) }
+    subject { described_class.fetch_serialized(user, env) }
 
     it { should be_a UserSerializer }
 
@@ -58,7 +58,7 @@ describe Grape::Formatter::ActiveModelSerializers do
     end
 
     it 'should read serializer options like "root"' do
-      expect(described_class.build_options_from_endpoint(endpoint).keys).to include :root
+      expect(described_class.serializer_options_from_endpoint(endpoint).keys).to include :root
     end
   end
 end
