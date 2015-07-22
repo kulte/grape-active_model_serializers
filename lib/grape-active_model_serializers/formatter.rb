@@ -1,14 +1,21 @@
 module Grape
   module Formatter
     module ActiveModelSerializers
-      ADAPTER_OPTION_KEYS = [:include, :fields, :adapter]
+      ADAPTER_OPTION_KEYS = [
+          :include,
+          :fields,
+          :adapter,
+          # :root, no longer supported
+      ].freeze
 
       class << self
         def call(resource, env)
+          endpoint = env['api.endpoint']
+          options = options_from_endpoint(endpoint).merge(ams_meta(env))
           adapter_options, serializer_options =
-              ams_options(env).partition { |k, _| ADAPTER_OPTION_KEYS.include? k }.map { |h| Hash[h] }
-          serialized = fetch_serialized(resource, env, serializer_options)
-          adapter = fetch_adapter(serialized, env, adapter_options)
+              options.partition { |k, _| ADAPTER_OPTION_KEYS.include? k }.map { |h| Hash[h] }
+          serialized = fetch_serialized(resource, endpoint, serializer_options)
+          adapter = fetch_adapter(serialized, adapter_options)
 
           if adapter
             adapter.serializable_hash.to_json
@@ -21,23 +28,7 @@ module Grape
           end
         end
 
-        def fetch_adapter(serialized, env, adapter_opts)
-          use_adapter = !(adapter_opts.key?(:adapter) && !adapter_opts[:adapter])
-          return nil unless use_adapter && serialized
-
-          endpoint = env['api.endpoint']
-          options = adapter_options_from_endpoint(endpoint)
-
-          adapter = options.fetch(:adapter, ActiveModel::Serializer.config.adapter)
-          return nil unless adapter
-
-          ActiveModel::Serializer::Adapter.create(serialized, options.merge(adapter_opts))
-        end
-
-        def fetch_serialized(resource, env, serializer_opts)
-          endpoint = env['api.endpoint']
-          options = serializer_options_from_endpoint(endpoint)
-
+        def fetch_serialized(resource, endpoint, options)
           serializer = options.fetch(:serializer, ActiveModel::Serializer.serializer_for(resource))
           return nil unless serializer
 
@@ -50,27 +41,35 @@ module Grape
           # options[:resource_name] = default_root(endpoint) if resource.respond_to?(:to_ary)
 
           begin
-            serializer.new(resource, options.merge(serializer_opts))
+            serializer.new(resource, options)
           rescue # ActiveModel::Serializer::ArraySerializer::NoSerializerError
             nil
           end
         end
 
-        def ams_options(env)
+        def fetch_adapter(serialized, options)
+          use_adapter = !(options.key?(:adapter) && !options[:adapter])
+          return nil unless use_adapter && serialized
+
+          adapter = options.fetch(:adapter, ActiveModel::Serializer.config.adapter)
+          return nil unless adapter
+
+          ActiveModel::Serializer::Adapter.create(serialized, options)
+        end
+
+        def ams_meta(env)
           env['ams_meta'] || {}
         end
 
-        def serializer_options_from_endpoint(endpoint)
-          [endpoint.default_serializer_options || {},
-           endpoint.namespace_options,
-           endpoint.route_options,
-           endpoint.options,
-           endpoint.options.fetch(:route_options)
+        def options_from_endpoint(endpoint)
+          [
+              endpoint.default_serializer_options || {},
+              endpoint.default_adapter_options || {},
+              endpoint.namespace_options,
+              endpoint.route_options,
+              endpoint.options,
+              endpoint.options.fetch(:route_options)
           ].reduce(:merge)
-        end
-
-        def adapter_options_from_endpoint(endpoint)
-          endpoint.default_adapter_options || {}
         end
 
         # array root is the innermost namespace name ('space') if there is one,
