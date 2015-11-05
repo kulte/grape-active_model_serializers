@@ -1,63 +1,75 @@
 module Grape
   module Formatter
     module ActiveModelSerializers
+      ADAPTER_OPTION_KEYS = [
+          :include,
+          :fields,
+          :adapter,
+          # :root, no longer supported
+      ].freeze
+
       class << self
         def call(resource, env)
-          serializer = fetch_serializer(resource, env)
-          adapter = fetch_adapter(serializer, resource, env)
+          endpoint = env['api.endpoint']
+          options = options_from_endpoint(endpoint).merge(ams_meta(env))
+          adapter_options, serializer_options =
+              options.partition { |k, _| ADAPTER_OPTION_KEYS.include? k }.map { |h| Hash[h] }
+          serialized = fetch_serialized(resource, endpoint, serializer_options)
+          adapter = fetch_adapter(serialized, adapter_options)
 
           if adapter
             adapter.serializable_hash.to_json
           else
-            if serializer
-              serializer.object.to_json
+            if serialized
+              serialized.object.to_json
             else
               Grape::Formatter::Json.call resource, env
             end
           end
         end
 
-        def fetch_adapter(serializer, resource, env)
+        def fetch_serialized(resource, endpoint, options)
+          serializer = options.fetch(:serializer, ActiveModel::Serializer.serializer_for(resource))
           return nil unless serializer
 
-          endpoint = env['api.endpoint']
-          options = build_adapter_options_from_endpoint(endpoint)
+          if options.key?(:each_serializer)
+            options[:serializer] = options.delete :each_serializer
+          end
+
+          options[:scope] = endpoint unless options.key?(:scope)
+          # ensure we have an root to fallback on
+          # options[:resource_name] = default_root(endpoint) if resource.respond_to?(:to_ary)
+
+          begin
+            serializer.new(resource, options)
+          rescue # ActiveModel::Serializer::ArraySerializer::NoSerializerError
+            nil
+          end
+        end
+
+        def fetch_adapter(serialized, options)
+          use_adapter = !(options.key?(:adapter) && !options[:adapter])
+          return nil unless use_adapter && serialized
 
           adapter = options.fetch(:adapter, ActiveModel::Serializer.config.adapter)
           return nil unless adapter
 
-          adapter.new(serializer, options)
+          ActiveModel::Serializer::Adapter.create(serialized, options)
         end
 
-        def fetch_serializer(resource, env)
-          endpoint = env['api.endpoint']
-          options = build_options_from_endpoint(endpoint)
-
-          serializer = options.fetch(:serializer, ActiveModel::Serializer.serializer_for(resource))
-          return nil unless serializer
-
-          options[:scope] = endpoint unless options.key?(:scope)
-          # ensure we have an root to fallback on
-          options[:resource_name] = default_root(endpoint) if resource.respond_to?(:to_ary)
-          serializer.new(resource, options.merge(other_options(env)))
+        def ams_meta(env)
+          env['ams_meta'] || {}
         end
 
-        def other_options(env)
-          options = {}
-          ams_meta = env['ams_meta'] || {}
-          meta =  ams_meta.delete(:meta)
-          meta_key = ams_meta.delete(:meta_key)
-          options[:meta_key] = meta_key if meta && meta_key
-          options[meta_key || :meta] = meta if meta
-          options
-        end
-
-        def build_options_from_endpoint(endpoint)
-          [endpoint.default_serializer_options || {}, endpoint.namespace_options, endpoint.route_options, endpoint.options, endpoint.options.fetch(:route_options)].reduce(:merge)
-        end
-
-        def build_adapter_options_from_endpoint(endpoint)
-          endpoint.default_adapter_options || {}
+        def options_from_endpoint(endpoint)
+          [
+              endpoint.default_serializer_options || {},
+              endpoint.default_adapter_options || {},
+              endpoint.namespace_options,
+              endpoint.route_options,
+              endpoint.options,
+              endpoint.options.fetch(:route_options)
+          ].reduce(:merge)
         end
 
         # array root is the innermost namespace name ('space') if there is one,
